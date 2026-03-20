@@ -39,7 +39,12 @@ export default function App() {
       }
 
       setSignals(grouped);
-      setMeta({ snippetCount: data.snippetCount, provider: formData.provider });
+      setMeta({
+        snippetCount: data.snippetCount,
+        provider: formData.provider,
+        clientContext: data.clientContext || null,
+        clientWebsite: formData.clientWebsite || null,
+      });
     } catch (err) {
       setError(err.message);
     } finally {

@@ -11,11 +11,20 @@
  * @param {string} keyword - The keyword used in the research
  * @param {Array<{title: string, snippet: string, source: string}>} snippets - Search result snippets
  * @param {string} [audience] - Optional target audience persona (e.g. "RevOps leaders")
+ * @param {{ purpose: string, personas: string, problems: string }|null} [clientContext]
  * @returns {string} The fully populated prompt
  */
-function buildIntentPrompt(topic, keyword, snippets, audience = "") {
+function buildIntentPrompt(topic, keyword, snippets, audience = "", clientContext = null) {
   const audienceClause = audience
     ? `\nAudience filter: Focus signals relevant to "${audience}". Deprioritize signals not applicable to this persona.`
+    : "";
+
+  const clientClause = clientContext
+    ? `
+Client context (use this to judge relevance — prioritise signals this client could credibly address):
+- Purpose: ${clientContext.purpose}
+- Serves: ${clientContext.personas}
+- Solves: ${clientContext.problems}`
     : "";
 
   const formattedSnippets = snippets
@@ -24,12 +33,13 @@ function buildIntentPrompt(topic, keyword, snippets, audience = "") {
 
   return `You are a B2B content strategist helping writers understand real audience intent.
 
-Below are search result snippets about "${topic}" (keyword: "${keyword}"). Your job is to extract genuine user intent signals that a writer could use to create better B2B content.${audienceClause}
+Below are search result snippets about "${topic}" (keyword: "${keyword}"). Your job is to extract genuine user intent signals that a writer could use to create better B2B content.${audienceClause}${clientClause}
 
 Rules:
 - Only extract signals that are present in the snippets. Do not invent or infer beyond what is written.
 - Focus on signals relevant to a B2B audience (buyers, practitioners, decision-makers).
 - Skip consumer-only content, spam, or irrelevant results.
+- If client context is provided, deprioritise signals that have no plausible connection to what that client does.
 - Write each signal as a clear, natural statement or question (1–2 sentences max).
 - Return a maximum of 15 signals total.
 
@@ -61,7 +71,6 @@ ${formattedSnippets}`;
  * @returns {Array} Parsed array of intent signals
  */
 function parseIntentResponse(raw) {
-  // Strip markdown fences if present
   const cleaned = raw
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")

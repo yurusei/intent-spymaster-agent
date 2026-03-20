@@ -286,6 +286,110 @@
   white-space: nowrap;
 }
 
+/* ── Client Context Card ──────────────────────────────────── */
+.client-context-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.context-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  gap: 12px;
+}
+.context-toggle:hover { background: var(--bg); }
+.context-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.context-icon {
+  font-size: 16px;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+.context-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.context-url {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.context-chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.context-body {
+  border-top: 1px solid var(--border);
+  padding: 4px 0 0;
+}
+.context-row {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.context-row:last-of-type { border-bottom: none; }
+.context-row-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+.context-row-icon {
+  font-size: 13px;
+  color: var(--primary);
+}
+.context-row-label > span:nth-child(2) {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.context-row-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.context-row-value {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  margin-left: 20px;
+}
+.context-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 18px 12px;
+  font-style: italic;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 600px) {
   .form-row--two { grid-template-columns: 1fr; }

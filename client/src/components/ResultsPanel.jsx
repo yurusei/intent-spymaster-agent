@@ -1,5 +1,6 @@
 import React from "react";
 import CategoryCard from "./CategoryCard";
+import ClientContextCard from "./ClientContextCard";
 
 const PROVIDER_LABELS = {
   anthropic: "Claude",
@@ -11,6 +12,13 @@ export default function ResultsPanel({ signals, meta, onExport }) {
 
   return (
     <section className="results-panel">
+      {meta.clientContext && (
+        <ClientContextCard
+          context={meta.clientContext}
+          websiteUrl={meta.clientWebsite}
+        />
+      )}
+
       <div className="results-header">
         <div className="results-meta">
           <span className="meta-chip">{totalSignals} signals</span>
