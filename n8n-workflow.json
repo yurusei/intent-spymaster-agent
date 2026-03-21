@@ -103,7 +103,7 @@
         "conditions": {
           "conditions": [
             {
-              "leftValue": "={{ $json.provider }}",
+              "leftValue": "={{ $node[\"Build Analysis Prompt\"].json.provider }}",
               "rightValue": "anthropic",
               "operator": { "type": "string", "operation": "equals" }
             }
