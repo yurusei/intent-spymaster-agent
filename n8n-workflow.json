@@ -2,7 +2,7 @@
   "name": "Intent Spymaster — B2B Intent Research",
   "nodes": [
     {
-      "id": "a1234567-0000-0000-0000-000000000001",
+      "id": "node-01",
       "name": "Form Trigger",
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.2,
@@ -10,43 +10,18 @@
       "webhookId": "intent-spymaster-form",
       "parameters": {
         "formTitle": "Intent Spymaster",
-        "formDescription": "Surface real B2B intent signals from Reddit, G2, Capterra, Trustpilot and more. Enter a topic and keyword to begin your research.",
+        "formDescription": "Surface real B2B intent signals from Reddit, G2, Capterra, Trustpilot and more.",
         "formFields": {
           "values": [
-            {
-              "fieldLabel": "Topic or Industry",
-              "fieldType": "text",
-              "requiredField": true,
-              "placeholder": "e.g. B2B email automation"
-            },
-            {
-              "fieldLabel": "Keyword",
-              "fieldType": "text",
-              "requiredField": true,
-              "placeholder": "e.g. email sequencing"
-            },
-            {
-              "fieldLabel": "Client Website",
-              "fieldType": "text",
-              "requiredField": false,
-              "placeholder": "https://example.com"
-            },
-            {
-              "fieldLabel": "Audience",
-              "fieldType": "text",
-              "requiredField": false,
-              "placeholder": "e.g. RevOps leaders, SDR managers"
-            },
+            { "fieldLabel": "Topic or Industry", "fieldType": "text", "requiredField": true, "placeholder": "e.g. B2B email automation" },
+            { "fieldLabel": "Keyword", "fieldType": "text", "requiredField": true, "placeholder": "e.g. email sequencing" },
+            { "fieldLabel": "Client Website", "fieldType": "text", "requiredField": false, "placeholder": "https://example.com" },
+            { "fieldLabel": "Audience", "fieldType": "text", "requiredField": false, "placeholder": "e.g. RevOps leaders, SDR managers" },
             {
               "fieldLabel": "AI Provider",
               "fieldType": "dropdown",
               "requiredField": true,
-              "fieldOptions": {
-                "values": [
-                  { "option": "Claude (Anthropic)" },
-                  { "option": "ChatGPT (OpenAI)" }
-                ]
-              }
+              "fieldOptions": { "values": [ { "option": "Claude (Anthropic)" }, { "option": "ChatGPT (OpenAI)" } ] }
             }
           ]
         },
@@ -55,66 +30,164 @@
       }
     },
     {
-      "id": "a1234567-0000-0000-0000-000000000002",
+      "id": "node-02",
       "name": "Validate & Map Inputs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [240, 0],
+      "position": [220, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Map n8n Form Trigger field labels to internal variable names.\n// Also accepts a raw JSON body so the workflow can be tested via the n8n manual trigger.\nconst data = $input.first().json;\n\nconst topic         = (data['Topic or Industry'] || data.topic         || '').trim();\nconst keyword       = (data['Keyword']            || data.keyword       || '').trim();\nconst clientWebsite = (data['Client Website']     || data.clientWebsite || '').trim();\nconst audience      = (data['Audience']           || data.audience      || '').trim();\nconst providerRaw   = (data['AI Provider']        || data.provider      || 'Claude (Anthropic)').trim();\n\n// Map dropdown label → internal provider key\nconst provider = providerRaw.toLowerCase().includes('openai') ? 'openai' : 'anthropic';\n\nif (!topic)   throw new Error('Topic or Industry is required');\nif (!keyword) throw new Error('Keyword is required');\n\nreturn [{ json: { topic, keyword, audience, clientWebsite, provider } }];"
+        "jsCode": "const data = $input.first().json;\nconst topic         = (data['Topic or Industry'] || data.topic         || '').trim();\nconst keyword       = (data['Keyword']            || data.keyword       || '').trim();\nconst clientWebsite = (data['Client Website']     || data.clientWebsite || '').trim();\nconst audience      = (data['Audience']           || data.audience      || '').trim();\nconst providerRaw   = (data['AI Provider']        || data.provider      || 'Claude (Anthropic)').trim();\nconst provider = providerRaw.toLowerCase().includes('openai') ? 'openai' : 'anthropic';\nif (!topic)   throw new Error('Topic or Industry is required');\nif (!keyword) throw new Error('Keyword is required');\nreturn [{ json: { topic, keyword, audience, clientWebsite, provider } }];"
       }
     },
     {
-      "id": "a1234567-0000-0000-0000-000000000003",
-      "name": "Gather Data",
+      "id": "node-03",
+      "name": "Prepare Serper Queries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 0],
+      "position": [440, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Runs 5 Serper searches + homepage fetch in parallel.\n// Set SERPER_API_KEY in n8n: Settings → Environment Variables.\nconst { topic, keyword, audience, clientWebsite, provider } = $input.first().json;\nconst SERPER_KEY = $env.SERPER_API_KEY;\n\nconst queries = [\n  { source: 'Reddit',     query: `site:reddit.com \"${topic}\" \"${keyword}\" B2B OR software OR tool` },\n  { source: 'G2',         query: `site:g2.com/reviews \"${topic}\" \"${keyword}\"` },\n  { source: 'Capterra',   query: `site:capterra.com \"${topic}\" \"${keyword}\"` },\n  { source: 'Trustpilot', query: `site:trustpilot.com \"${topic}\" \"${keyword}\"` },\n  { source: 'Forum',      query: `\"${topic}\" \"${keyword}\" community OR forum questions pain points` },\n];\n\nasync function serperSearch(query, source) {\n  try {\n    const res = await fetch('https://google.serper.dev/search', {\n      method: 'POST',\n      headers: { 'X-API-KEY': SERPER_KEY, 'Content-Type': 'application/json' },\n      body: JSON.stringify({ q: query, num: 3 }),\n    });\n    const data = await res.json();\n    return (data.organic || []).slice(0, 3).map(r => ({\n      title:   r.title   || '',\n      snippet: r.snippet || '',\n      source,\n    }));\n  } catch {\n    return [];\n  }\n}\n\nasync function fetchWebsite(url) {\n  if (!url) return null;\n  try {\n    const res = await fetch(url, {\n      headers: {\n        'User-Agent': 'Mozilla/5.0 (compatible; IntentSpymasterBot/1.0)',\n        'Accept': 'text/html',\n      },\n    });\n    if (!res.ok) return null;\n    return await res.text();\n  } catch {\n    return null;\n  }\n}\n\nconst [snippetGroups, websiteHtml] = await Promise.all([\n  Promise.all(queries.map(({ query, source }) => serperSearch(query, source))),\n  fetchWebsite(clientWebsite),\n]);\n\nconst snippets = snippetGroups.flat().slice(0, 15);\n\nreturn [{ json: { topic, keyword, audience, clientWebsite, provider, snippets, websiteHtml } }];"
+        "jsCode": "const { topic, keyword, audience, clientWebsite, provider } = $input.first().json;\nconst sources = [\n  { source: 'Reddit',     query: `site:reddit.com \"${topic}\" \"${keyword}\" B2B OR software OR tool` },\n  { source: 'G2',         query: `site:g2.com/reviews \"${topic}\" \"${keyword}\"` },\n  { source: 'Capterra',   query: `site:capterra.com \"${topic}\" \"${keyword}\"` },\n  { source: 'Trustpilot', query: `site:trustpilot.com \"${topic}\" \"${keyword}\"` },\n  { source: 'Forum',      query: `\"${topic}\" \"${keyword}\" community OR forum questions pain points` },\n];\nreturn sources.map(s => ({ json: { ...s, topic, keyword, audience, clientWebsite, provider } }));"
       }
     },
     {
-      "id": "a1234567-0000-0000-0000-000000000004",
-      "name": "Analyze Client Website",
+      "id": "node-04",
+      "name": "Search Serper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_SERPER_CRED_ID", "name": "Serper API" }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ q: $json.query, num: 3 }) }}",
+        "options": { "includeInputData": true }
+      }
+    },
+    {
+      "id": "node-05",
+      "name": "Aggregate Snippets + Website",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 0],
+      "position": [880, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Strips HTML tags from the fetched homepage, then asks the selected AI\n// to extract purpose / personas / problems. Skips silently if no URL was provided.\nconst { topic, keyword, audience, clientWebsite, provider, snippets, websiteHtml } = $input.first().json;\n\nfunction extractTextFromHTML(html) {\n  if (!html) return null;\n  return html\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .slice(0, 3000);\n}\n\nasync function callAI(prompt, provider, maxTokens) {\n  if (provider === 'openai') {\n    const res = await fetch('https://api.openai.com/v1/chat/completions', {\n      method: 'POST',\n      headers: { 'Authorization': `Bearer ${$env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },\n      body: JSON.stringify({ model: 'gpt-4o', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),\n    });\n    const data = await res.json();\n    if (data.error) throw new Error(data.error.message);\n    return data.choices[0].message.content;\n  } else {\n    const res = await fetch('https://api.anthropic.com/v1/messages', {\n      method: 'POST',\n      headers: { 'x-api-key': $env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },\n      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),\n    });\n    const data = await res.json();\n    if (data.error) throw new Error(data.error.message);\n    return data.content[0].text;\n  }\n}\n\nfunction parseJSON(raw) {\n  return JSON.parse(raw.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '').trim());\n}\n\nconst websiteText = extractTextFromHTML(websiteHtml);\nlet clientContext = null;\n\nif (websiteText) {\n  const prompt = `You are a B2B positioning analyst. Read the website copy below and extract a concise understanding of this company.\n\nReturn ONLY a valid JSON object — no explanation, no markdown, no preamble.\n\nFormat:\n{\n  \"purpose\": \"1-2 sentences: what they do, what gap they fill, what makes them unique\",\n  \"personas\": \"1-2 sentences: who their main target audiences or buyers are\",\n  \"problems\": \"1-2 sentences: the core pains or challenges they solve for those personas\"\n}\n\nRules:\n- Be specific — avoid generic filler like \"we help businesses grow\"\n- If a field cannot be determined, write \"Not clear from website\"\n- Keep each field to 1-2 sentences maximum\n\nWebsite copy:\n${websiteText}`;\n\n  try {\n    const raw = await callAI(prompt, provider, 512);\n    clientContext = parseJSON(raw);\n  } catch {\n    // silently degrade — research continues without client context\n  }\n}\n\nreturn [{ json: { topic, keyword, audience, clientWebsite, provider, snippets, clientContext } }];"
+        "jsCode": "const allItems = $input.all();\nconst first = allItems[0].json;\nconst { topic, keyword, audience, clientWebsite, provider } = first;\n\n// Aggregate snippets from all 5 Serper responses\nconst snippets = allItems.flatMap(item => {\n  const source = item.json.source || 'Forum';\n  return (item.json.organic || []).slice(0, 3).map(r => ({\n    title: r.title || '',\n    snippet: r.snippet || '',\n    source,\n  }));\n}).slice(0, 15);\n\n// Fetch client website — no API key needed, plain fetch is allowed in Code nodes\nlet websiteText = null;\nif (clientWebsite) {\n  try {\n    const res = await fetch(clientWebsite, {\n      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; IntentSpymasterBot/1.0)', 'Accept': 'text/html' },\n    });\n    if (res.ok) {\n      const html = await res.text();\n      websiteText = html\n        .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n        .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n        .replace(/<[^>]+>/g, ' ')\n        .replace(/\\s+/g, ' ')\n        .trim()\n        .slice(0, 3000);\n    }\n  } catch {}\n}\n\nreturn [{ json: { topic, keyword, audience, clientWebsite, provider, snippets, websiteText } }];"
       }
     },
     {
-      "id": "a1234567-0000-0000-0000-000000000005",
-      "name": "Run Intent Analysis",
+      "id": "node-06",
+      "name": "Build Analysis Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [960, 0],
+      "position": [1100, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Builds the master intent prompt, calls the selected AI, and parses the signal array.\nconst { topic, keyword, audience, provider, snippets, clientContext } = $input.first().json;\n\nif (!snippets || snippets.length === 0) {\n  throw new Error('No snippets found — try a broader topic or keyword.');\n}\n\nasync function callAI(prompt, provider, maxTokens) {\n  if (provider === 'openai') {\n    const res = await fetch('https://api.openai.com/v1/chat/completions', {\n      method: 'POST',\n      headers: { 'Authorization': `Bearer ${$env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },\n      body: JSON.stringify({ model: 'gpt-4o', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),\n    });\n    const data = await res.json();\n    if (data.error) throw new Error(data.error.message);\n    return data.choices[0].message.content;\n  } else {\n    const res = await fetch('https://api.anthropic.com/v1/messages', {\n      method: 'POST',\n      headers: { 'x-api-key': $env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },\n      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, messages: [{ role: 'user', content: prompt }] }),\n    });\n    const data = await res.json();\n    if (data.error) throw new Error(data.error.message);\n    return data.content[0].text;\n  }\n}\n\nconst audienceClause = audience\n  ? `\\nAudience filter: Focus signals relevant to \"${audience}\". Deprioritize signals not applicable to this persona.`\n  : '';\n\nconst clientClause = clientContext\n  ? `\\nClient context (prioritise signals this client could credibly address):\\n- Purpose: ${clientContext.purpose}\\n- Serves: ${clientContext.personas}\\n- Solves: ${clientContext.problems}`\n  : '';\n\nconst formattedSnippets = snippets\n  .map((s, i) => `[${i + 1}] Source: ${s.source}\\nTitle: ${s.title}\\nSnippet: ${s.snippet}`)\n  .join('\\n\\n');\n\nconst prompt = `You are a B2B content strategist helping writers understand real audience intent.\n\nBelow are search result snippets about \"${topic}\" (keyword: \"${keyword}\"). Extract genuine user intent signals a writer could use to create better B2B content.${audienceClause}${clientClause}\n\nRules:\n- Only extract signals present in the snippets. Do not invent or infer beyond what is written.\n- Focus on signals relevant to a B2B audience (buyers, practitioners, decision-makers).\n- Skip consumer-only content, spam, or irrelevant results.\n- If client context is provided, deprioritise signals unrelated to what the client does.\n- Write each signal as a clear, natural statement or question (1-2 sentences max).\n- Return a maximum of 15 signals total.\n\nAssign each signal one category:\n- Question — something users are actively trying to figure out\n- Pain Point — a frustration, failure, or unmet need\n- Comparison — evaluating options, switching decisions, or vendor comparisons\n- Anecdote — a personal story or real-world use case\n- Feature Request — something users wish a product or solution would do\n\nReturn ONLY a valid JSON array. No explanation, no markdown, no preamble.\n\nFormat:\n[\n  {\n    \"signal\": \"...\",\n    \"category\": \"Pain Point\",\n    \"source\": \"Reddit\"\n  }\n]\n\nSnippets:\n${formattedSnippets}`;\n\nconst raw = await callAI(prompt, provider, 1024);\nconst signals = JSON.parse(raw.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '').trim());\n\nreturn [{ json: { signals, clientContext, snippetCount: snippets.length, topic, keyword, provider } }];"
+        "jsCode": "const { topic, keyword, audience, provider, snippets, websiteText } = $input.first().json;\n\nconst audienceClause = audience\n  ? `\\nAudience filter: Focus signals relevant to \"${audience}\". Deprioritize signals not applicable to this persona.`\n  : '';\n\nconst websiteSection = websiteText\n  ? `\\n\\nClient website copy (use this to understand who the client is and filter for relevant signals):\\n${websiteText}`\n  : '';\n\nconst clientContextFormat = websiteText\n  ? '{ \"purpose\": \"1-2 sentences: what they do and what makes them unique\", \"personas\": \"1-2 sentences: who they serve\", \"problems\": \"1-2 sentences: pains they solve\" }'\n  : 'null';\n\nconst formattedSnippets = snippets\n  .map((s, i) => `[${i + 1}] Source: ${s.source}\\nTitle: ${s.title}\\nSnippet: ${s.snippet}`)\n  .join('\\n\\n');\n\nconst prompt = `You are a B2B content strategist and positioning analyst.${websiteSection}\\n\\nBelow are search result snippets about \"${topic}\" (keyword: \"${keyword}\"). Extract genuine user intent signals for B2B content creation.${audienceClause}\\n\\nRules:\\n- Only extract signals present in the snippets. Do not invent or infer beyond what is written.\\n- Focus on signals relevant to a B2B audience (buyers, practitioners, decision-makers).\\n- Skip consumer-only content, spam, or irrelevant results.\\n- If website copy was provided, deprioritise signals unrelated to what the client does.\\n- Write each signal as a clear, natural statement or question (1-2 sentences max).\\n- Return a maximum of 15 signals total.\\n\\nSignal categories:\\n- Question — something users are actively trying to figure out\\n- Pain Point — a frustration, failure, or unmet need\\n- Comparison — evaluating options, switching decisions, or vendor comparisons\\n- Anecdote — a personal story or real-world use case\\n- Feature Request — something users wish a product or solution would do\\n\\nReturn ONLY a valid JSON object. No explanation, no markdown, no preamble.\\n\\nFormat:\\n{\\n  \"clientContext\": ${clientContextFormat},\\n  \"signals\": [\\n    { \"signal\": \"...\", \"category\": \"Pain Point\", \"source\": \"Reddit\" }\\n  ]\\n}\\n${websiteText ? '\\nFor clientContext: be specific, avoid generic filler like \\'we help businesses grow\\', 1-2 sentences per field.' : ''}\\n\\nSnippets:\\n${formattedSnippets}`;\n\nconst aiBody = provider === 'openai'\n  ? { model: 'gpt-4o', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }\n  : { model: 'claude-sonnet-4-20250514', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] };\n\nreturn [{ json: { aiBody, topic, keyword, audience, provider, snippetCount: snippets.length } }];"
       }
     },
     {
-      "id": "a1234567-0000-0000-0000-000000000006",
-      "name": "Format HTML Response",
+      "id": "node-07",
+      "name": "Route by Provider",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1320, 0],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.provider }}",
+              "rightValue": "anthropic",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-08",
+      "name": "Anthropic Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -120],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_ANTHROPIC_CRED_ID", "name": "Anthropic API" }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.aiBody) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-09",
+      "name": "OpenAI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 120],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_OPENAI_CRED_ID", "name": "OpenAI API" }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.aiBody) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-10",
+      "name": "Parse Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 0],
+      "position": [1760, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Builds a self-contained HTML results page returned directly to the browser.\nconst { signals, clientContext, snippetCount, topic, keyword, provider } = $input.first().json;\n\nconst CATEGORY_ORDER = ['Question', 'Pain Point', 'Comparison', 'Anecdote', 'Feature Request'];\nconst CATEGORY_COLORS = {\n  'Question':        '#4f7ef8',\n  'Pain Point':      '#e05c5c',\n  'Comparison':      '#f0964a',\n  'Anecdote':        '#7c5cbf',\n  'Feature Request': '#27ae7a',\n};\nconst SOURCE_COLORS = {\n  'Reddit': '#ff4500', 'G2': '#ff492c', 'Capterra': '#00a2e8',\n  'Trustpilot': '#00b67a', 'Forum': '#7c5cbf',\n};\nconst PROVIDER_LABELS = { anthropic: 'Claude', openai: 'ChatGPT' };\n\n// Group signals by category\nconst grouped = {};\nfor (const cat of CATEGORY_ORDER) grouped[cat] = [];\nfor (const s of (signals || [])) {\n  const cat = grouped[s.category] ? s.category : 'Question';\n  grouped[cat].push(s);\n}\n\n// Escape HTML special characters to prevent XSS in the output page\nfunction esc(str) {\n  return String(str)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\n// Build category blocks\nlet categoriesHtml = '';\nfor (const cat of CATEGORY_ORDER) {\n  const items = grouped[cat];\n  if (!items.length) continue;\n  const color = CATEGORY_COLORS[cat] || '#888';\n  const rows = items.map(s => {\n    const srcColor = SOURCE_COLORS[s.source] || '#888';\n    return `<li class='si'><span class='src' style='background:${srcColor}'>${esc(s.source)}</span><span class='st'>${esc(s.signal)}</span></li>`;\n  }).join('');\n  categoriesHtml += `<div class='cb' style='border-left-color:${color}'><h3 class='ch' style='color:${color}'>${esc(cat)} <span class='cn'>${items.length}</span></h3><ul class='sl'>${rows}</ul></div>`;\n}\n\n// Build client context block\nlet clientHtml = '';\nif (clientContext) {\n  clientHtml = `<div class='cc'>\n    <p class='cl'>Client Understanding</p>\n    <div class='cr'><span class='ck'>Purpose</span><p>${esc(clientContext.purpose)}</p></div>\n    <div class='cr'><span class='ck'>Personas</span><p>${esc(clientContext.personas)}</p></div>\n    <div class='cr'><span class='ck'>Problems</span><p>${esc(clientContext.problems)}</p></div>\n  </div>`;\n}\n\nconst providerLabel = PROVIDER_LABELS[provider] || provider;\n\nconst html = `<!DOCTYPE html>\n<html lang='en'>\n<head>\n<meta charset='UTF-8'>\n<meta name='viewport' content='width=device-width,initial-scale=1'>\n<title>Intent Signals — ${esc(topic)}</title>\n<style>\n*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}\nbody{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8f9fb;color:#1a1a2e;padding:32px 16px 64px;line-height:1.5}\n.wrap{max-width:700px;margin:0 auto}\n.logo{font-size:12px;color:#9ca3af;letter-spacing:.06em;margin-bottom:10px}\nh1{font-size:22px;font-weight:800;margin-bottom:10px}\n.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:28px}\n.chip{background:#fff;border:1px solid #e4e7ed;border-radius:20px;padding:3px 10px;font-size:12px;color:#6b7280}\n.cc{background:#fff;border:1px solid #e4e7ed;border-left:4px solid #4f7ef8;border-radius:10px;padding:16px 18px;margin-bottom:14px}\n.cl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4f7ef8;margin-bottom:10px}\n.cr{margin-bottom:8px}.cr:last-child{margin-bottom:0}\n.ck{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;display:block;margin-bottom:2px}\n.cr p{font-size:13px;line-height:1.5;color:#1a1a2e}\n.cb{background:#fff;border:1px solid #e4e7ed;border-left:4px solid #888;border-radius:10px;padding:16px 18px;margin-bottom:12px}\n.ch{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}\n.cn{background:#f8f9fb;border:1px solid #e4e7ed;border-radius:12px;padding:1px 8px;font-size:12px;color:#6b7280;font-weight:400}\n.sl{list-style:none}\n.si{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f0f2f5}\n.si:last-child{border-bottom:none;padding-bottom:0}\n.src{flex-shrink:0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;color:#fff;margin-top:3px;white-space:nowrap}\n.st{font-size:13px;line-height:1.5;color:#1a1a2e}\n.foot{margin-top:28px;font-size:11px;color:#d1d5db;text-align:center}\n</style>\n</head>\n<body>\n<div class='wrap'>\n  <p class='logo'>◈ INTENT SPYMASTER</p>\n  <h1>${esc(topic)}</h1>\n  <div class='chips'>\n    <span class='chip'>${signals.length} signals</span>\n    <span class='chip'>${snippetCount} sources scanned</span>\n    <span class='chip'>keyword: ${esc(keyword)}</span>\n    <span class='chip'>via ${providerLabel}</span>\n  </div>\n  ${clientHtml}\n  ${categoriesHtml}\n  <p class='foot'>Generated by Intent Spymaster &middot; Signals filtered to B2B relevance</p>\n</div>\n</body>\n</html>`;\n\nreturn [{ json: { html } }];"
+        "jsCode": "const aiResponse = $input.first().json;\n\n// Pull original context from the prompt-building node\nconst ctx = $node['Build Analysis Prompt'].json;\nconst { topic, keyword, provider, snippetCount } = ctx;\n\n// Extract text from whichever provider responded\nlet rawText;\nif (aiResponse.content && Array.isArray(aiResponse.content)) {\n  rawText = aiResponse.content[0].text; // Anthropic\n} else if (aiResponse.choices && Array.isArray(aiResponse.choices)) {\n  rawText = aiResponse.choices[0].message.content; // OpenAI\n} else {\n  throw new Error('Unexpected AI response: ' + JSON.stringify(aiResponse).slice(0, 200));\n}\n\nconst cleaned = rawText.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '').trim();\nconst { clientContext, signals } = JSON.parse(cleaned);\n\nreturn [{ json: { signals, clientContext, snippetCount, topic, keyword, provider } }];"
       }
     },
     {
-      "id": "a1234567-0000-0000-0000-000000000007",
+      "id": "node-11",
+      "name": "Format HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { signals, clientContext, snippetCount, topic, keyword, provider } = $input.first().json;\n\nconst CATEGORY_ORDER = ['Question', 'Pain Point', 'Comparison', 'Anecdote', 'Feature Request'];\nconst CATEGORY_COLORS = { 'Question': '#4f7ef8', 'Pain Point': '#e05c5c', 'Comparison': '#f0964a', 'Anecdote': '#7c5cbf', 'Feature Request': '#27ae7a' };\nconst SOURCE_COLORS = { 'Reddit': '#ff4500', 'G2': '#ff492c', 'Capterra': '#00a2e8', 'Trustpilot': '#00b67a', 'Forum': '#7c5cbf' };\nconst PROVIDER_LABELS = { anthropic: 'Claude', openai: 'ChatGPT' };\n\nconst grouped = {};\nfor (const cat of CATEGORY_ORDER) grouped[cat] = [];\nfor (const s of (signals || [])) {\n  const cat = grouped[s.category] ? s.category : 'Question';\n  grouped[cat].push(s);\n}\n\nfunction esc(str) {\n  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nlet categoriesHtml = '';\nfor (const cat of CATEGORY_ORDER) {\n  const items = grouped[cat];\n  if (!items.length) continue;\n  const color = CATEGORY_COLORS[cat] || '#888';\n  const rows = items.map(s => {\n    const srcColor = SOURCE_COLORS[s.source] || '#888';\n    return `<li class='si'><span class='src' style='background:${srcColor}'>${esc(s.source)}</span><span class='st'>${esc(s.signal)}</span></li>`;\n  }).join('');\n  categoriesHtml += `<div class='cb' style='border-left-color:${color}'><h3 class='ch' style='color:${color}'>${esc(cat)} <span class='cn'>${items.length}</span></h3><ul class='sl'>${rows}</ul></div>`;\n}\n\nlet clientHtml = '';\nif (clientContext) {\n  clientHtml = `<div class='cc'><p class='cl'>Client Understanding</p><div class='cr'><span class='ck'>Purpose</span><p>${esc(clientContext.purpose)}</p></div><div class='cr'><span class='ck'>Personas</span><p>${esc(clientContext.personas)}</p></div><div class='cr'><span class='ck'>Problems</span><p>${esc(clientContext.problems)}</p></div></div>`;\n}\n\nconst providerLabel = PROVIDER_LABELS[provider] || provider;\n\nconst html = `<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Intent Signals — ${esc(topic)}</title><style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8f9fb;color:#1a1a2e;padding:32px 16px 64px;line-height:1.5}.wrap{max-width:700px;margin:0 auto}.logo{font-size:12px;color:#9ca3af;letter-spacing:.06em;margin-bottom:10px}h1{font-size:22px;font-weight:800;margin-bottom:10px}.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:28px}.chip{background:#fff;border:1px solid #e4e7ed;border-radius:20px;padding:3px 10px;font-size:12px;color:#6b7280}.cc{background:#fff;border:1px solid #e4e7ed;border-left:4px solid #4f7ef8;border-radius:10px;padding:16px 18px;margin-bottom:14px}.cl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4f7ef8;margin-bottom:10px}.cr{margin-bottom:8px}.cr:last-child{margin-bottom:0}.ck{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;display:block;margin-bottom:2px}.cr p{font-size:13px;line-height:1.5}.cb{background:#fff;border:1px solid #e4e7ed;border-left:4px solid #888;border-radius:10px;padding:16px 18px;margin-bottom:12px}.ch{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}.cn{background:#f8f9fb;border:1px solid #e4e7ed;border-radius:12px;padding:1px 8px;font-size:12px;color:#6b7280;font-weight:400}.sl{list-style:none}.si{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f0f2f5}.si:last-child{border-bottom:none;padding-bottom:0}.src{flex-shrink:0;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;color:#fff;margin-top:3px;white-space:nowrap}.st{font-size:13px;line-height:1.5}.foot{margin-top:28px;font-size:11px;color:#d1d5db;text-align:center}</style></head><body><div class='wrap'><p class='logo'>◈ INTENT SPYMASTER</p><h1>${esc(topic)}</h1><div class='chips'><span class='chip'>${signals.length} signals</span><span class='chip'>${snippetCount} sources scanned</span><span class='chip'>keyword: ${esc(keyword)}</span><span class='chip'>via ${providerLabel}</span></div>${clientHtml}${categoriesHtml}<p class='foot'>Generated by Intent Spymaster &middot; Signals filtered to B2B relevance</p></div></body></html>`;\n\nreturn [{ json: { html } }];"
+      }
+    },
+    {
+      "id": "node-12",
       "name": "Form Ending",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.2,
-      "position": [1440, 0],
+      "position": [2200, 0],
       "parameters": {
         "operation": "completion",
         "completionTitle": "Your intent research is ready",
@@ -124,49 +197,50 @@
   ],
   "connections": {
     "Form Trigger": {
-      "main": [
-        [{ "node": "Validate & Map Inputs", "type": "main", "index": 0 }]
-      ]
+      "main": [ [{ "node": "Validate & Map Inputs", "type": "main", "index": 0 }] ]
     },
     "Validate & Map Inputs": {
+      "main": [ [{ "node": "Prepare Serper Queries", "type": "main", "index": 0 }] ]
+    },
+    "Prepare Serper Queries": {
+      "main": [ [{ "node": "Search Serper", "type": "main", "index": 0 }] ]
+    },
+    "Search Serper": {
+      "main": [ [{ "node": "Aggregate Snippets + Website", "type": "main", "index": 0 }] ]
+    },
+    "Aggregate Snippets + Website": {
+      "main": [ [{ "node": "Build Analysis Prompt", "type": "main", "index": 0 }] ]
+    },
+    "Build Analysis Prompt": {
+      "main": [ [{ "node": "Route by Provider", "type": "main", "index": 0 }] ]
+    },
+    "Route by Provider": {
       "main": [
-        [{ "node": "Gather Data", "type": "main", "index": 0 }]
+        [{ "node": "Anthropic Analysis", "type": "main", "index": 0 }],
+        [{ "node": "OpenAI Analysis",    "type": "main", "index": 0 }]
       ]
     },
-    "Gather Data": {
-      "main": [
-        [{ "node": "Analyze Client Website", "type": "main", "index": 0 }]
-      ]
+    "Anthropic Analysis": {
+      "main": [ [{ "node": "Parse Response", "type": "main", "index": 0 }] ]
     },
-    "Analyze Client Website": {
-      "main": [
-        [{ "node": "Run Intent Analysis", "type": "main", "index": 0 }]
-      ]
+    "OpenAI Analysis": {
+      "main": [ [{ "node": "Parse Response", "type": "main", "index": 0 }] ]
     },
-    "Run Intent Analysis": {
-      "main": [
-        [{ "node": "Format HTML Response", "type": "main", "index": 0 }]
-      ]
+    "Parse Response": {
+      "main": [ [{ "node": "Format HTML", "type": "main", "index": 0 }] ]
     },
-    "Format HTML Response": {
-      "main": [
-        [{ "node": "Form Ending", "type": "main", "index": 0 }]
-      ]
+    "Format HTML": {
+      "main": [ [{ "node": "Form Ending", "type": "main", "index": 0 }] ]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1",
     "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "callerPolicy": "workflowsFromSameOwner"
   },
   "pinData": {},
   "versionId": "a1234567-0000-0000-0000-000000000099",
-  "meta": {
-    "templateCredsSetupCompleted": true
-  },
-  "tags": [
-    { "name": "intent-research", "createdAt": "2025-01-01T00:00:00.000Z" }
-  ]
+  "meta": { "templateCredsSetupCompleted": true },
+  "tags": [{ "name": "intent-research" }]
 }
