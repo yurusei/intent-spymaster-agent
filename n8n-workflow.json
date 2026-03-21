@@ -111,21 +111,14 @@
     },
     {
       "id": "a1234567-0000-0000-0000-000000000007",
-      "name": "Respond to Webhook",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
+      "name": "Form Ending",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.2,
       "position": [1440, 0],
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $input.first().json.html }}",
-        "options": {
-          "responseCode": 200,
-          "responseHeaders": {
-            "entries": [
-              { "name": "Content-Type", "value": "text/html; charset=utf-8" }
-            ]
-          }
-        }
+        "operation": "completion",
+        "completionTitle": "Your intent research is ready",
+        "completionMessage": "={{ $input.first().json.html }}"
       }
     }
   ],
@@ -157,7 +150,7 @@
     },
     "Format HTML Response": {
       "main": [
-        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+        [{ "node": "Form Ending", "type": "main", "index": 0 }]
       ]
     }
   },
